@@ -31,6 +31,16 @@ def load_catalog():
 model, encoders, scaler = load_model()
 catalog = load_catalog()
 
+
+def get_catalog_options(column_name, limit=None):
+    if column_name not in catalog.columns:
+        return []
+
+    options = sorted(catalog[column_name].dropna().unique().tolist())
+    if limit is not None:
+        options = options[:limit]
+    return options
+
 # ---------- Sidebar ----------
 st.sidebar.title("🎮 เกมไหนดี?")
 st.sidebar.markdown("AI จะช่วยคุณเลือกเกมที่น่าเล่น!")
@@ -50,15 +60,15 @@ with col1:
     st.subheader("🎯 ข้อมูลเกม")
 
     # Platform
-    platform_options = sorted(catalog['Platform'].dropna().unique().tolist())
+    platform_options = get_catalog_options('Platform')
     platform = st.selectbox("📱 เลือก Platform", platform_options)
 
     # Genre
-    genre_options = sorted(catalog['Genre'].dropna().unique().tolist())
+    genre_options = get_catalog_options('Genre')
     genre = st.selectbox("🎭 เลือก Genre ที่ชอบ", genre_options)
 
     # Rating
-    rating_options = sorted(catalog['Rating'].dropna().unique().tolist())
+    rating_options = get_catalog_options('Rating')
     rating = st.selectbox("🔞 เลือกรายการ Rating", rating_options)
 
 with col2:
@@ -79,12 +89,12 @@ with col2:
     )
 
     # Publisher (optional)
-    publisher_options = sorted(catalog['Publisher'].dropna().unique().tolist())[:50]
+    publisher_options = get_catalog_options('Publisher', limit=50)
     publisher = st.selectbox("🏢 Publisher (เลือกหรือไม่ก็ได้)",
                              ['Unknown'] + publisher_options)
 
     # Developer (optional)
-    developer_options = sorted(catalog['Developer'].dropna().unique().tolist())[:50]
+    developer_options = get_catalog_options('Developer', limit=50)
     developer = st.selectbox("🛠️ Developer (เลือกหรือไม่ก็ได้)",
                              ['Unknown'] + developer_options)
 
