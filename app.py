@@ -1,114 +1,186 @@
-"""
-================================================================
-Streamlit Web App: เกมแนวไหนที่คุณควรซื้อตอนนี้?
-================================================================
-รันด้วยคำสั่ง:  streamlit run app.py
-ต้องมีไฟล์อยู่ในโฟลเดอร์เดียวกัน:
-  - genre_svm_model.pkl
-  - sample_games_by_genre.csv
-================================================================
-"""
-
+# app.py
+# =====================================================
+# 🎮 Game Recommender - SVM + Streamlit
+# =====================================================
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
+import warnings
+warnings.filterwarnings('ignore')
 
-# ----------------------------------------------------------------
-# โหลดโมเดลและข้อมูลตัวอย่าง (cache ไว้ไม่ต้องโหลดซ้ำทุกครั้ง)
-# ----------------------------------------------------------------
+# ---------- Page Config ----------
+st.set_page_config(
+    page_title="🎮 เกมไหนดี? - AI แนะนำเกม",
+    page_icon="🎮",
+    layout="wide"
+)
+
+# ---------- Load Model ----------
 @st.cache_resource
 def load_model():
-    return joblib.load("genre_svm_model.pkl")
+    model = joblib.load('game_svm_model.pkl')
+    encoders = joblib.load('encoders.pkl')
+    scaler = joblib.load('scaler.pkl')
+    return model, encoders, scaler
 
 @st.cache_data
-def load_sample_games():
-    return pd.read_csv("sample_games_by_genre.csv")
+def load_catalog():
+    return pd.read_csv('game_catalog.csv')
 
-model = load_model()
-sample_games = load_sample_games()
+model, encoders, scaler = load_model()
+catalog = load_catalog()
 
-# ----------------------------------------------------------------
-# ตั้งค่าหน้าเว็บ
-# ----------------------------------------------------------------
-st.set_page_config(page_title="เกมแนวไหนที่คุณควรซื้อ?", page_icon="🎮", layout="centered")
+# ---------- Sidebar ----------
+st.sidebar.title("🎮 เกมไหนดี?")
+st.sidebar.markdown("AI จะช่วยคุณเลือกเกมที่น่าเล่น!")
+st.sidebar.markdown("---")
 
-st.title("🎮 เกมแนวไหนที่คุณควรซื้อตอนนี้?")
-st.write("ตอบคำถามสั้น ๆ เกี่ยวกับสไตล์การเล่นเกมที่คุณชอบ แล้วให้ SVM ทำนายแนวเกมที่เหมาะกับคุณ")
+# ---------- Main Header ----------
+st.title("🎮 เกมไหนดี? - AI แนะนำเกม")
+st.markdown("### บอกความต้องการของคุณ แล้ว AI จะทำนายว่าเกมนั้นจะได้รับความนิยมแค่ไหน!")
 
-st.divider()
-st.subheader("แบบสอบถาม")
+# =====================================================
+# Input Section
+# =====================================================
+st.markdown("---")
+col1, col2 = st.columns(2)
 
-# ----------------------------------------------------------------
-# แบบสอบถาม (Quiz) -> map เป็น Features ที่โมเดลต้องการ
-# ----------------------------------------------------------------
-platform = st.selectbox(
-    "1) อยากเล่นเกมบนแพลตฟอร์มไหน?",
-    options=["PS4", "PS3", "PS2", "X360", "XB", "PC", "Wii", "DS", "3DS", "PSP", "GC", "GBA"],
-)
+with col1:
+    st.subheader("🎯 ข้อมูลเกม")
 
-rating = st.radio(
-    "2) รับได้กับความรุนแรง/เนื้อหาในเกมระดับไหน?",
-    options=["E", "E10+", "T", "M"],
-    format_func=lambda x: {
-        "E": "E (เหมาะกับทุกวัย)",
-        "E10+": "E10+ (10 ปีขึ้นไป)",
-        "T": "T (วัยรุ่น 13+)",
-        "M": "M (18+ เนื้อหารุนแรง)",
-    }[x],
-    horizontal=True,
-)
+    # Platform
+    platform_options = sorted(catalog['Platform'].dropna().unique().tolist())
+    platform = st.selectbox("📱 เลือก Platform", platform_options)
 
-critic_score = st.slider(
-    "3) ให้ความสำคัญกับคะแนนนักวิจารณ์ (Critic Score) แค่ไหน? (0-100)",
-    min_value=0, max_value=100, value=75,
-)
+    # Genre
+    genre_options = sorted(catalog['Genre'].dropna().unique().tolist())
+    genre = st.selectbox("🎭 เลือก Genre ที่ชอบ", genre_options)
 
-user_score = st.slider(
-    "4) อยากเล่นเกมที่ผู้เล่นคนอื่นให้คะแนนสูงแค่ไหน? (0-10)",
-    min_value=0.0, max_value=10.0, value=7.5, step=0.1,
-)
+    # Rating
+    rating_options = sorted(catalog['Rating'].dropna().unique().tolist())
+    rating = st.selectbox("🔞 เลือกรายการ Rating", rating_options)
 
-global_sales = st.slider(
-    "5) ชอบเกมกระแสหลัก/ขายดีทั่วโลก หรือเกมกลุ่มเฉพาะ? (ยอดขายล้านชุด)",
-    min_value=0.0, max_value=20.0, value=1.0, step=0.1,
-    help="ค่ามาก = เกมฮิตระดับโลก, ค่าน้อย = เกมกลุ่มเฉพาะ/เฉพาะทาง",
-)
+with col2:
+    st.subheader("⭐ คะแนนที่ต้องการ")
 
-st.divider()
+    # Critic Score
+    critic_score = st.slider(
+        "📝 Critic Score ที่ต้องการ",
+        min_value=0, max_value=100, value=75, step=5,
+        help="คะแนนจากนักวิจารณ์ (0-100)"
+    )
 
-# ----------------------------------------------------------------
-# ทำนายผล
-# ----------------------------------------------------------------
-if st.button("🔮 ทำนายแนวเกมที่ควรซื้อ", type="primary", use_container_width=True):
-    input_df = pd.DataFrame([{
-        "Platform": platform,
-        "Rating": rating,
-        "Critic_Score": critic_score,
-        "User_Score": user_score,
-        "Global_Sales": global_sales,
-    }])
+    # User Score
+    user_score = st.slider(
+        "👥 User Score ที่ต้องการ",
+        min_value=0.0, max_value=10.0, value=7.0, step=0.5,
+        help="คะแนนจากผู้เล่น (0-10)"
+    )
 
-    prediction = model.predict(input_df)[0]
-    probabilities = model.predict_proba(input_df)[0]
-    classes = model.classes_
+    # Publisher (optional)
+    publisher_options = sorted(catalog['Publisher'].dropna().unique().tolist())[:50]
+    publisher = st.selectbox("🏢 Publisher (เลือกหรือไม่ก็ได้)",
+                             ['Unknown'] + publisher_options)
 
-    prob_df = pd.DataFrame({"แนวเกม": classes, "ความน่าจะเป็น": probabilities})
-    prob_df = prob_df.sort_values("ความน่าจะเป็น", ascending=False).reset_index(drop=True)
+    # Developer (optional)
+    developer_options = sorted(catalog['Developer'].dropna().unique().tolist())[:50]
+    developer = st.selectbox("🛠️ Developer (เลือกหรือไม่ก็ได้)",
+                             ['Unknown'] + developer_options)
 
-    st.success(f"### 🎯 เกมที่คุณควรซื้อตอนนี้คือแนว: **{prediction}**")
+# =====================================================
+# Prediction
+# =====================================================
+st.markdown("---")
 
-    st.write("ความน่าจะเป็นของแต่ละแนวเกม:")
-    st.bar_chart(prob_df.set_index("แนวเกม"))
+if st.button("🔮 ทำนายเลย!", type="primary", use_container_width=True):
+    try:
+        # Prepare input
+        input_data = pd.DataFrame({
+            'Platform': [platform],
+            'Genre': [genre],
+            'Publisher': [publisher],
+            'Developer': [developer],
+            'Rating': [rating],
+            'Critic_Score': [critic_score],
+            'User_Score': [user_score]
+        })
 
-    # แสดงตัวอย่างเกมยอดนิยมในแนวที่ทำนายได้
-    st.subheader(f"ตัวอย่างเกมแนว {prediction} ที่ขายดี")
-    matched = sample_games[sample_games["Genre"] == prediction].head(5)
-    if not matched.empty:
-        st.table(matched[["Name", "Platform", "Global_Sales"]].rename(
-            columns={"Name": "ชื่อเกม", "Platform": "แพลตฟอร์ม", "Global_Sales": "ยอดขาย (ล้านชุด)"}
-        ))
-    else:
-        st.write("ไม่พบตัวอย่างเกมในหมวดนี้")
+        # Encode categorical
+        for col in ['Platform', 'Genre', 'Publisher', 'Developer', 'Rating']:
+            le = encoders[col]
+            # Handle unseen labels
+            val = input_data[col].values[0]
+            if val in le.classes_:
+                input_data[col] = le.transform([val])
+            else:
+                input_data[col] = 0
 
-st.divider()
-st.caption("โมเดลนี้เทรนด้วย SVM (Support Vector Machine) จากดาต้าเซ็ต Video Game Sales with Ratings")
+        # Scale
+        input_scaled = scaler.transform(input_data)
+
+        # Predict
+        prediction_log = model.predict(input_scaled)[0]
+        prediction = np.expm1(prediction_log)  # Convert back from log
+
+        # ---------- Display Result ----------
+        st.markdown("## 📊 ผลการทำนาย")
+
+        if prediction > 5.0:
+            st.success(f"### 🔥 เกมนี้มีแนวโน้มจะได้รับความนิยมสูงมาก!")
+            st.balloons()
+        elif prediction > 1.0:
+            st.info(f"### ✅ เกมนี้มีแนวโน้มได้รับความนิยมดี")
+        elif prediction > 0.1:
+            st.warning(f"### ⚠️ เกมนี้ได้รับความนิยมปานกลาง")
+        else:
+            st.error(f"### ❌ เกมนี้ไม่ค่อยได้รับความนิยม")
+
+        # Metric display
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("🌍 Predicted Global Sales", f"{prediction:.2f}M",
+                      help="ล้านชุดทั่วโลก")
+        col_m2.metric("📝 Critic Score", f"{critic_score}/100")
+        col_m3.metric("👥 User Score", f"{user_score}/10")
+
+        # Progress bar
+        st.progress(min(prediction / 10.0, 1.0))
+        st.caption(f"ความนิยม: {min(prediction/10*100, 100):.1f}%")
+
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาด: {e}")
+
+# =====================================================
+# Recommendation Section
+# =====================================================
+st.markdown("---")
+st.markdown("## 🏆 เกมแนะนำตามความชอบของคุณ")
+
+# Filter games by user preferences
+filtered = catalog[
+    (catalog['Genre'] == genre) &
+    (catalog['Rating'] == rating)
+].copy()
+
+if len(filtered) > 0:
+    # Sort by Global_Sales
+    filtered = filtered.sort_values('Global_Sales', ascending=False).head(10)
+
+    st.dataframe(
+        filtered[['Name', 'Platform', 'Publisher', 'Critic_Score',
+                  'User_Score', 'Global_Sales']].reset_index(drop=True),
+        use_container_width=True
+    )
+else:
+    st.info("ไม่พบเกมที่ตรงกับเงื่อนไข ลองเปลี่ยน Genre หรือ Rating ดู nhé!")
+
+# =====================================================
+# Footer
+# =====================================================
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: gray;'>
+    <p>🤖 Powered by SVM (Support Vector Machine) + Streamlit</p>
+    <p>📊 ข้อมูลจาก Video Games Sales Dataset</p>
+</div>
+""", unsafe_allow_html=True)
