@@ -44,6 +44,13 @@ st.markdown("""
         font-weight: bold;
         margin-bottom: 10px;
     }
+            
+    :root {
+    --dark-bg: #1a1a2e;
+    --card-bg: #2d2d44;
+    --accent-color: #ffd700;
+    --text-primary: #e0e0e0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -207,7 +214,7 @@ if st.button("🔮 แนะนำเกมที่น่าซื้อ!", typ
 
             for idx, row in close_games.iterrows():
                 st.markdown(f"""
-                <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin: 8px 0;">
+                <div style="background: rgba(255, 243, 205, 0.1); padding: 15px; border-radius: 10px; margin: 8px 0;">
                     <strong>{row['Name']}</strong><br>
                     <small>
                         📱 {row['Platform']} | 🎭 {row['Genre']} | 🔞 {row['Rating']} |
