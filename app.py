@@ -1,6 +1,6 @@
 # app.py
 # =====================================================
-# 🎮 Game Recommender - SVM + Streamlit
+# 🎮 Game Recommender - แนะนำเกมที่ควรซื้อ
 # =====================================================
 import streamlit as st
 import pandas as pd
@@ -11,12 +11,43 @@ warnings.filterwarnings('ignore')
 
 # ---------- Page Config ----------
 st.set_page_config(
-    page_title="🎮 เกมไหนดี? - AI แนะนำเกม",
+    page_title="🎮 เกมไหนดี? - แนะนำเกมที่ควรซื้อ",
     page_icon="🎮",
     layout="wide"
 )
 
-# ---------- Load Model ----------
+# ---------- Custom CSS ----------
+st.markdown("""
+<style>
+    .game-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .game-title {
+        font-size: 1.3em;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    .game-info {
+        font-size: 0.9em;
+        opacity: 0.9;
+    }
+    .recommend-badge {
+        background: #ff6b6b;
+        padding: 5px 15px;
+        border-radius: 20px;
+        display: inline-block;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- Load Model & Data ----------
 @st.cache_resource
 def load_model():
     model = joblib.load('game_svm_model.pkl')
@@ -26,29 +57,18 @@ def load_model():
 
 @st.cache_data
 def load_catalog():
-    return pd.read_csv('game_catalog.csv')
+    df = pd.read_csv('game_catalog.csv')
+    # แปลง Critic_Score และ User_Score เป็น numeric
+    df['Critic_Score'] = pd.to_numeric(df['Critic_Score'], errors='coerce').fillna(0)
+    df['User_Score'] = pd.to_numeric(df['User_Score'], errors='coerce').fillna(0)
+    return df
 
 model, encoders, scaler = load_model()
 catalog = load_catalog()
 
-
-def get_catalog_options(column_name, limit=None):
-    if column_name not in catalog.columns:
-        return []
-
-    options = sorted(catalog[column_name].dropna().unique().tolist())
-    if limit is not None:
-        options = options[:limit]
-    return options
-
-# ---------- Sidebar ----------
-st.sidebar.title("🎮 เกมไหนดี?")
-st.sidebar.markdown("AI จะช่วยคุณเลือกเกมที่น่าเล่น!")
-st.sidebar.markdown("---")
-
-# ---------- Main Header ----------
-st.title("🎮 เกมไหนดี? - AI แนะนำเกม")
-st.markdown("### บอกความต้องการของคุณ แล้ว AI จะทำนายว่าเกมนั้นจะได้รับความนิยมแค่ไหน!")
+# ---------- Header ----------
+st.title("🎮 เกมไหนดี? - แนะนำเกมที่ควรซื้อ")
+st.markdown("### บอกความต้องการของคุณ แล้วเราจะแนะนำเกมที่น่าสนใจจากฐานข้อมูล!")
 
 # =====================================================
 # Input Section
@@ -57,132 +77,150 @@ st.markdown("---")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("🎯 ข้อมูลเกม")
+    st.subheader("🎯 ข้อมูลเกมที่คุณสนใจ")
 
     # Platform
-    platform_options = get_catalog_options('Platform')
+    platform_options = sorted(catalog['Platform'].dropna().unique().tolist())
     platform = st.selectbox("📱 เลือก Platform", platform_options)
 
     # Genre
-    genre_options = get_catalog_options('Genre')
+    genre_options = sorted(catalog['Genre'].dropna().unique().tolist())
     genre = st.selectbox("🎭 เลือก Genre ที่ชอบ", genre_options)
 
     # Rating
-    rating_options = get_catalog_options('Rating')
+    rating_options = sorted(catalog['Rating'].dropna().unique().tolist())
     rating = st.selectbox("🔞 เลือกรายการ Rating", rating_options)
 
 with col2:
-    st.subheader("⭐ คะแนนที่ต้องการ")
+    st.subheader("⭐ เกณฑ์การเลือก")
 
-    # Critic Score
-    critic_score = st.slider(
-        "📝 Critic Score ที่ต้องการ",
-        min_value=0, max_value=100, value=75, step=5,
-        help="คะแนนจากนักวิจารณ์ (0-100)"
+    # Critic Score minimum
+    min_critic_score = st.slider(
+        "📝 Critic Score ขั้นต่ำ",
+        min_value=0, max_value=100, value=70, step=5,
+        help="คะแนนจากนักวิจารณ์ขั้นต่ำ (0-100)"
     )
 
-    # User Score
-    user_score = st.slider(
-        "👥 User Score ที่ต้องการ",
-        min_value=0.0, max_value=10.0, value=7.0, step=0.5,
-        help="คะแนนจากผู้เล่น (0-10)"
+    # User Score minimum
+    min_user_score = st.slider(
+        "👥 User Score ขั้นต่ำ",
+        min_value=0.0, max_value=10.0, value=6.0, step=0.5,
+        help="คะแนนจากผู้เล่นขั้นต่ำ (0-10)"
     )
 
-    # Publisher (optional)
-    publisher_options = get_catalog_options('Publisher', limit=50)
-    publisher = st.selectbox("🏢 Publisher (เลือกหรือไม่ก็ได้)",
-                             ['Unknown'] + publisher_options)
-
-    # Developer (optional)
-    developer_options = get_catalog_options('Developer', limit=50)
-    developer = st.selectbox("🛠️ Developer (เลือกหรือไม่ก็ได้)",
-                             ['Unknown'] + developer_options)
+    # จำนวนเกมที่แนะนำ
+    num_recommendations = st.slider(
+        "📋 จำนวนเกมที่แนะนำ",
+        min_value=3, max_value=15, value=5, step=1,
+        help="จำนวนเกมที่จะแสดงในรายการแนะนำ"
+    )
 
 # =====================================================
-# Prediction
+# Recommendation Logic
 # =====================================================
 st.markdown("---")
 
-if st.button("🔮 ทำนายเลย!", type="primary", use_container_width=True):
+if st.button("🔮 แนะนำเกมที่น่าซื้อ!", type="primary", use_container_width=True):
     try:
-        # Prepare input
-        input_data = pd.DataFrame({
-            'Platform': [platform],
-            'Genre': [genre],
-            'Publisher': [publisher],
-            'Developer': [developer],
-            'Rating': [rating],
-            'Critic_Score': [critic_score],
-            'User_Score': [user_score]
-        })
+        # 1. กรองเกมจาก dataset ที่ตรงกับเงื่อนไข
+        filtered_games = catalog[
+            (catalog['Platform'] == platform) &
+            (catalog['Genre'] == genre) &
+            (catalog['Rating'] == rating) &
+            (catalog['Critic_Score'] >= min_critic_score) &
+            (catalog['User_Score'] >= min_user_score)
+        ].copy()
 
-        # Encode categorical
-        for col in ['Platform', 'Genre', 'Publisher', 'Developer', 'Rating']:
-            le = encoders[col]
-            # Handle unseen labels
-            val = input_data[col].values[0]
-            if val in le.classes_:
-                input_data[col] = le.transform([val])
+        # 2. เรียงตามยอดขาย (Global_Sales)
+        filtered_games = filtered_games.sort_values('Global_Sales', ascending=False)
+
+        # 3. แสดงผล
+        if len(filtered_games) > 0:
+            st.success(f"### ✅ พบ {len(filtered_games)} เกมที่ตรงกับเงื่อนไข!")
+
+            # แสดง Top Games
+            top_games = filtered_games.head(num_recommendations)
+
+            st.markdown("## 🏆 เกมที่แนะนำ - ควรซื้อ!")
+            st.markdown(f"*เรียงตามยอดขายและคะแนน*")
+
+            for idx, row in top_games.iterrows():
+                st.markdown(f"""
+                <div class="game-card">
+                    <div class="recommend-badge">🎮 แนะนำ</div>
+                    <div class="game-title">{row['Name']}</div>
+                    <div class="game-info">
+                        📱 {row['Platform']} | 🎭 {row['Genre']} | 🔞 {row['Rating']}<br>
+                        📝 Critic: {row['Critic_Score']}/100 | 👥 User: {row['User_Score']}/10<br>
+                        💰 ยอดขาย: {row['Global_Sales']:.2f}M | 🏢 {row['Publisher']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # =====================================================
+            # แสดงเกมที่คล้ายกัน (Similar Games)
+            # =====================================================
+            st.markdown("---")
+            st.markdown("## 🔍 เกมที่คล้ายกัน (ต่างเงื่อนไขเล็กน้อย)")
+
+            # หาเกมที่คล้ายกัน - ต่าง Genre หรือ Rating หรือ Platform
+            similar_games = catalog[
+                (catalog['Platform'] == platform) &
+                (catalog['Critic_Score'] >= min_critic_score - 10) &
+                (catalog['User_Score'] >= min_user_score - 1)
+            ].copy()
+
+            # เอาเกมที่แนะนำไปแล้วออก
+            if len(top_games) > 0:
+                similar_games = similar_games[~similar_games['Name'].isin(top_games['Name'])]
+
+            # เรียงตามยอดขาย
+            similar_games = similar_games.sort_values('Global_Sales', ascending=False).head(num_recommendations)
+
+            if len(similar_games) > 0:
+                for idx, row in similar_games.iterrows():
+                    st.markdown(f"""
+                    <div style="background: #f0f0f0; padding: 15px; border-radius: 10px; margin: 8px 0; border-left: 4px solid #667eea;">
+                        <strong>{row['Name']}</strong><br>
+                        <small>
+                            📱 {row['Platform']} | 🎭 {row['Genre']} | 🔞 {row['Rating']} |
+                            📝 {row['Critic_Score']}/100 | 👥 {row['User_Score']}/10 |
+                            💰 {row['Global_Sales']:.2f}M
+                        </small>
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
-                input_data[col] = 0
+                st.info("ไม่พบเกมที่คล้ายกันในเงื่อนไขนี้")
 
-        # Scale
-        input_scaled = scaler.transform(input_data)
-
-        # Predict
-        prediction_log = model.predict(input_scaled)[0]
-        prediction = np.expm1(prediction_log)  # Convert back from log
-
-        # ---------- Display Result ----------
-        st.markdown("## 📊 ผลการทำนาย")
-
-        if prediction > 5.0:
-            st.success(f"### 🔥 เกมนี้มีแนวโน้มจะได้รับความนิยมสูงมาก!")
-            st.balloons()
-        elif prediction > 1.0:
-            st.info(f"### ✅ เกมนี้มีแนวโน้มได้รับความนิยมดี")
-        elif prediction > 0.1:
-            st.warning(f"### ⚠️ เกมนี้ได้รับความนิยมปานกลาง")
         else:
-            st.error(f"### ❌ เกมนี้ไม่ค่อยได้รับความนิยม")
+            st.warning("### ⚠️ ไม่พบเกมที่ตรงกับเงื่อนไข")
+            st.markdown("**ลองปรับเงื่อนไขดังนี้:**")
+            st.markdown("- ลด Critic Score หรือ User Score ขั้นต่ำ")
+            st.markdown("- เปลี่ยน Platform, Genre หรือ Rating")
 
-        # Metric display
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("🌍 Predicted Global Sales", f"{prediction:.2f}M",
-                      help="ล้านชุดทั่วโลก")
-        col_m2.metric("📝 Critic Score", f"{critic_score}/100")
-        col_m3.metric("👥 User Score", f"{user_score}/10")
+            # แสดงเกมที่ใกล้เคียงที่สุด
+            st.markdown("### 🔍 เกมที่ใกล้เคียงที่สุด (ต่างเงื่อนไข)")
+            close_games = catalog[
+                (catalog['Platform'] == platform) |
+                (catalog['Genre'] == genre)
+            ].sort_values('Global_Sales', ascending=False).head(num_recommendations)
 
-        # Progress bar
-        st.progress(min(prediction / 10.0, 1.0))
-        st.caption(f"ความนิยม: {min(prediction/10*100, 100):.1f}%")
+            for idx, row in close_games.iterrows():
+                st.markdown(f"""
+                <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin: 8px 0;">
+                    <strong>{row['Name']}</strong><br>
+                    <small>
+                        📱 {row['Platform']} | 🎭 {row['Genre']} | 🔞 {row['Rating']} |
+                        📝 {row['Critic_Score']}/100 | 👥 {row['User_Score']}/10 |
+                        💰 {row['Global_Sales']:.2f}M
+                    </small>
+                </div>
+                """, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
-
-# =====================================================
-# Recommendation Section
-# =====================================================
-st.markdown("---")
-st.markdown("## 🏆 เกมแนะนำตามความชอบของคุณ")
-
-# Filter games by user preferences
-filtered = catalog[
-    (catalog['Genre'] == genre) &
-    (catalog['Rating'] == rating)
-].copy()
-
-if len(filtered) > 0:
-    # Sort by Global_Sales
-    filtered = filtered.sort_values('Global_Sales', ascending=False).head(10)
-
-    st.dataframe(
-        filtered[['Name', 'Platform', 'Publisher', 'Critic_Score',
-                  'User_Score', 'Global_Sales']].reset_index(drop=True),
-        use_container_width=True
-    )
-else:
-    st.info("ไม่พบเกมที่ตรงกับเงื่อนไข ลองเปลี่ยน Genre หรือ Rating ดู nhé!")
+        import traceback
+        st.code(traceback.format_exc())
 
 # =====================================================
 # Footer
